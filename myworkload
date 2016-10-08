@@ -1,0 +1,26 @@
+#size (2 K rows with 500 million records, total is 1 TB)
+recordcount=500000000
+fieldlength=100
+fieldcount=20
+#must be here due to ycsb bug. Will specify to YCSB CLI.
+# 0 means run forever
+operationcount=0
+
+workload=com.yahoo.ycsb.workloads.CoreWorkload
+
+#type of workload
+readproportion=0.5
+updateproportion=0.2
+scanproportion=0.2
+readmodifywriteproportion=0.05
+
+#caution: insert changes size of db which makes comparisons across 
+#runs impossible. Use with caution. Since the work of an update is
+#identical to insert we recommend not using insert.
+insertproportion=0.0
+
+#distribution
+readallfields=true
+requestdistribution=zipfian
+maxscanlength=100
+scanlengthdistribution=uniform
