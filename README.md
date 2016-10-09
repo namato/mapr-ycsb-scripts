@@ -108,3 +108,20 @@ Execute the load phase, using all nodes of the cluster to load data.
 
 You should see reams of output. Do not panic. Or do. It's a free country. Look for things that look like errors. There may be things that look like errors that are not errors. Sorry, I didn't write the software.
 
+By default, this will load half a billion rows into the table, which can take a while. You will see periodic status updates like this:
+
+```
+2016-10-09 13:09:52:216 610 sec: 886342 operations; 1326.6 current ops/sec; est completion in 15 hours 45 minutes [INSERT: Count=13266, Max=509439, Min=1274, Avg=3729.79, 90=4083, 99=15807, 99.9=250751, 99.99=360447]
+```
+
+# Run your workload
+
+You can run your workload as follows:
+
+```
+./ycsbrun.sh maprdb tran
+```
+
+"tran" is short for "transactions", I guess.
+
+At the end of the run, you will get a couple of files.
