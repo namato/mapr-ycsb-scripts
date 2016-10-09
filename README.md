@@ -65,7 +65,7 @@ Now that YCSB is unpacked, clustershell works, and these scripts are set up, you
 
 ```
 clush -ac /tmp/ycsb-* /tmp/mapr-ycsb-scripts
-``
+```
 
 # Create the table
 
