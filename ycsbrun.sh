@@ -11,21 +11,8 @@
 #the output from ycsb is written to $TOOL_HOME on all nodes. This must NOT be a shared directory or they will overwrite
 #each other.
 
-TOOL_HOME=$(cd "$(dirname "$0")"; pwd)
+source env.sh
 
-# set these  if needed for your environment. 
-YCSB_HOME=/root/ycsb-0.9.0
-#TOOL_HOME=/home/mapr/ycsbrun
-if [ -z $WORKLOAD ]; then
-  WORKLOAD=$TOOL_HOME/myworkload
-fi
-echo "Using workload file: $WORKLOAD"
-#Nodes that will run YCSB (typically all data nodes)
-CLUSH_NODE_GROUP='all'
-#table names/paths for maprdb and hbase
-MTABLE=/tables/ycsb
-HTABLE=ycsbhbase
-COLUMNFAMILY=family
 # this is the number of threads used for transactional workloads
 if [ -z $TRAN_THREADS ]; then
   TRAN_THREADS=75
@@ -198,10 +185,8 @@ function func_usage() {
   shift
   case "$TYPE" in 
     maprdb)
-       TABLE=$MTABLE
        ;;
     hbase)
-       TABLE=$HTABLE
        ;;
      *) 
         echo "ERROR: Unrecognized database type: " $TYPE
