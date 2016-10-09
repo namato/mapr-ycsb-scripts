@@ -1,9 +1,13 @@
-#!/bin/sh -ex 
+#!/bin/bash
 
 source env.sh
 
-hbase shell <<EOF
-NN=10
+NN=`clush -g all -N hostname | wc -w`
+
+read -r -d '' TABLEDEF << EOM
+NN=$(($NN * 2))
 splits=(1..(NN-1)).map {|i| "user#{10000+i*(92924-10000)/NN}"}
-create '$TABLENAME', 'family', SPLITS => splits
-EOF
+create '$TABLE', 'family', SPLITS => splits
+EOM
+
+echo "$TABLEDEF" | clush --pick=1 -g all hbase shell
