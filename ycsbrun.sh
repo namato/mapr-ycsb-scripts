@@ -36,6 +36,13 @@ function getdatanodes {
   fi
   #remove newlines
   DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
+  FIRST_DATANODE="${DATANODES%% *}"
+  if [[ $FIRST_DATANODE =~ ip-[0-9]+-[0-9]+-[0-9]+-[0-9] ]]; then
+    # we are most likely running on EC2, try to get external hostnames
+    DATANODES=`clush -g $CLUSH_NODE_GROUP -N curl -s http://169.254.169.254/latest/meta-data/public-ipv4`
+    DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
+    FIRST_DATANODE="${DATANODES%% *}"
+  fi
 }
 
 
@@ -49,10 +56,10 @@ function func_copy() {
   #as such it has a special option to run remotely
 
   echo copying YCSB results files to current directory
-  #clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/ycsb.out --dest .
-  #clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/ycsb.stats --dest .
-  clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/ycsb.stats --dest .
-  clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/ycsb.out --dest .
+  #clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/$FILENAME_BASE.out --dest .
+  clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/$FILENAME_BASE.stats --dest .
+  #clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/$FILENAME_BASE.stats --dest .
+  clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/$FILENAME_BASE.out --dest .
 
   if [ "$TYPE" = "maprdb" ]; then 
     #copy up to 3 of the most recent MFS-5 log files (MapR-DB output)
@@ -69,18 +76,23 @@ function func_copy() {
     fi
 
     echo collecting table information via maprcli and hadoop mfs
-    maprcli table info -path $TABLE -json > maprcli.table.info
-    maprcli table region list -path $TABLE -json > maprcli.table.region.list
-    echo "======================" >> maprcli.table.region.list
-    echo "summary info" >> maprcli.table.region.list
-    echo "======================" >> maprcli.table.region.list
-    grep primarynode maprcli.table.region.list |sort |uniq  -c >> maprcli.table.region.list
-    hadoop mfs -lss $TABLE > hadoop.mfs
+    TABLEINFOFILE=$FILENAME_BASE.maprcli.table.info
+    REGIONFILE=$FILENAME_BASE.maprcli.table.region.list
+    MFSFILE=$FILENAME_BASE.hadoop.mfs
+    maprcli table info -path $TABLE -json > $TABLEINFOFILE
+    maprcli table region list -path $TABLE -json > $REGIONFILE
+    echo "======================" >> $REGIONFILE
+    echo "summary info" >> $REGIONFILE
+    echo "======================" >> $REGIONFILE
+    grep primarynode $REGIONFILE |sort |uniq  -c >> $REGIONFILE
+    hadoop mfs -lss $TABLE > $MFSFILE
+  elif [ "$TYPE" = "cassandra2-cql" ]; then 
+    STATUSFILE=$FILENAME_BASE.nodetool.status
+    clush --pick=1 -g $CLUSH_NODE_GROUP nodetool status > $STATUSFILE
   else
     echo "Not copying anything for HBase (TBD)"
   fi
 }
-
 
 function func_tran() {
   #run YCSB on all nodes using one
@@ -92,7 +104,7 @@ function func_tran() {
   do
     set -x
     #hide the SLF4J error message
-    ssh $node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE tranone $* |grep -v SLF4J" &
+    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE tranone -p hosts=localhost $* |grep -v SLF4J" &
     set +x
   done
 
@@ -113,8 +125,18 @@ function func_one() {
 	threads=$TRAN_THREADS
   fi
   #leverages newer ycsb scripts (0.7.x and later)
-  $YCSB_HOME/bin/ycsb $mode hbase10 -threads $threads -P $WORKLOAD -p table=$TABLE -p columnfamily=$COLUMNFAMILY -p exportfile=ycsb.stats -s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1 | tee ycsb.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" ycsb.stats
-
+  if [ "$TYPE" = "cassandra2-cql" ]; then
+    # we only need to supply one host here, the client will discover the others
+    (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode cassandra2-cql -threads \
+        $threads -P $WORKLOAD \
+        -cp /YCSBRUN.FAKE -p exportfile=$FILENAME_BASE.stats -s $* 2>&1) | \
+        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $FILENAME_BASE.stats
+  else
+    (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode hbase10 -threads \
+        $threads -P $WORKLOAD -p table=$TABLE -p columnfamily=$COLUMNFAMILY \
+        -p exportfile=$FILENAME_BASE.stats-s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
+        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $FILENAME_BASE.stats
+  fi
 }
 
 function func_load() {
@@ -136,7 +158,7 @@ function func_load() {
   do
     set -x
     #hide the SLF4J error message
-    ssh $node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE loadone -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
+    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE loadone -p hosts=localhost -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
     set +x
     insertstart=$((insertstart + insertcount))
   done
@@ -154,16 +176,17 @@ function func_kill_one() {
   #kill all but this script
   pids=$(pgrep -f YCSBRUN.FAKE | grep -v ^$$\$)
   kill $pids 2> /dev/null
+  exit 0
 }
 
 function func_kill() {
-  clush -g $CLUSH_NODE_GROUP $TOOL_HOME/ycsbrun.sh $TYPE killone
+  clush -g $CLUSH_NODE_GROUP cd $TOOL_HOME \; ./ycsbrun.sh $TYPE killone
 }
 
 
 function func_usage() {
   echo "Usage: ycsbrun.sh <db type> <action> [additional arguments] where"
-  echo "	<db type> is one of maprdb or hbase"
+  echo "	<db type> is one of maprdb, hbase or cassandra2-cql"
   echo "	<action> is one of one, all, load, copy, status, kill"
   echo "		load - run a ycsb load on all nodes (load data - run first)"
   echo "		tran - run a ycsb test on all nodes"
@@ -187,6 +210,8 @@ function func_usage() {
     maprdb)
        ;;
     hbase)
+       ;;
+    cassandra2-cql)
        ;;
      *) 
         echo "ERROR: Unrecognized database type: " $TYPE

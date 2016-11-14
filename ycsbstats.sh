@@ -13,11 +13,17 @@
 
 #loop over all passed in directory and combine their stats
 
+#my $env_from_script = `. env.sh; env`;
+my $FNB = `grep FILENAME_BASE env.sh | cut -f 2 -d= | tr -d \\\" | tr -d \\\'`;
+chomp $FNB;
+if (length($FNB) < 1) {
+	die 'must set FILENAME_BASE in env.sh';
+}
 
 $dir = $ARGV[0];
 print "processing files in directory $dir";
-$outfilename=$dir . "/" . "ycsbsummary.tsv";
-$out2filename=$dir . "/" . "ycsbstatssummary.txt";
+$outfilename=$dir . "/" . $FNB . "summary.tsv";
+$out2filename=$dir . "/" . $FNB . "statssummary.txt";
 print "writing output to $outfilename and $out2filename\n";
 open(OUT, '>', $outfilename) or die "Could not open file '$outfilename'!";
 open(OUT2, '>', $out2filename) or die "Could not open file '$out2filename'!";
@@ -49,7 +55,8 @@ push(@typeordered, "INSERT" );
 
 
 opendir(D, $dir) || die "Can't open directory $dir";
-@files = grep (/^ycsb.out.*/, readdir(D));
+$grepstr = '$FNB' . '.out' . '.*'
+@files = grep (/^$grepstr/, readdir(D));
 foreach (@files) {
   $filename=$dir . "/" . $_;
   print "processing file $filename\n";
@@ -147,7 +154,8 @@ foreach (@files) {
 
 
 opendir(D, $dir) || die "Can't open directory $dir";
-@files = grep (/^ycsb.stats.*/, readdir(D));
+$grepstr = '$FNB' . '.stats' . '.*'
+@files = grep (/^$grepstr/, readdir(D));
 foreach (@files) {
   $filename=$dir . "/" . $_;
   print "processing file $filename\n";
