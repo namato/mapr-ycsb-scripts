@@ -29,7 +29,7 @@ function getdatanodes {
 
   #this is a function because I only need to execute it for the initial commands and it doesn't have
   #to be executed when the functions are running on a data node where clush may not be available
-  DATANODES=`clush -g $CLUSH_NODE_GROUP -N hostname`
+  DATANODES=`clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -N hostname`
   if [ $? != 0 ]; then
     echo "clush group '$CLUSH_NODE_GROUP' not defined. Please define."
     exit
@@ -39,7 +39,7 @@ function getdatanodes {
   FIRST_DATANODE="${DATANODES%% *}"
   if [[ $FIRST_DATANODE =~ ip-[0-9]+-[0-9]+-[0-9]+-[0-9] ]]; then
     # we are most likely running on EC2, try to get external hostnames
-    DATANODES=`clush -g $CLUSH_NODE_GROUP -N curl -s http://169.254.169.254/latest/meta-data/public-ipv4`
+    DATANODES=`clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -N curl -s http://169.254.169.254/latest/meta-data/public-ipv4`
     DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
     FIRST_DATANODE="${DATANODES%% *}"
   fi
@@ -57,9 +57,9 @@ function func_copy() {
 
   echo copying YCSB results files to current directory
   #clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/$FILENAME_BASE.out --dest .
-  clush -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/$FILENAME_BASE.stats --dest .
+  clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP --rcopy $YCSB_HOME/$FILENAME_BASE.stats --dest .
   #clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/$FILENAME_BASE.stats --dest .
-  clush -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/$FILENAME_BASE.out --dest .
+  clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP --rcopy $TOOL_HOME/$FILENAME_BASE.out --dest .
 
   if [ "$TYPE" = "maprdb" ]; then 
     #copy up to 3 of the most recent MFS-5 log files (MapR-DB output)
@@ -67,7 +67,7 @@ function func_copy() {
     #this could be a lot of data
     echo copying MFS log files which can be very large. Consider disabling if space is an issue.
     #echo NOT copying MFS log files. Edit script if you want to preserve.
-    clush -g $CLUSH_NODE_GROUP --rcopy /opt/mapr/logs/mfs.log-5{,.1,.2} --dest . 2>&1 |grep -v "No such file or directory"| grep -v "exited with exit code 1"
+    clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP --rcopy /opt/mapr/logs/mfs.log-5{,.1,.2} --dest . 2>&1 |grep -v "No such file or directory"| grep -v "exited with exit code 1"
     ls mfs.log-5* > /dev/null
     if [ $? != 0 ]; then
       echo Failed to copy MFS log files. Proceeding anyway.
@@ -88,7 +88,7 @@ function func_copy() {
     hadoop mfs -lss $TABLE > $MFSFILE
   elif [ "$TYPE" = "cassandra2-cql" ]; then 
     STATUSFILE=$FILENAME_BASE.nodetool.status
-    clush --pick=1 -g $CLUSH_NODE_GROUP nodetool status > $STATUSFILE
+    clush -l $SSH_REMOTE_USER --pick=1 -g $CLUSH_NODE_GROUP nodetool status > $STATUSFILE
   else
     echo "Not copying anything for HBase (TBD)"
   fi
@@ -134,7 +134,7 @@ function func_one() {
   else
     (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode hbase10 -threads \
         $threads -P $WORKLOAD -p table=$TABLE -p columnfamily=$COLUMNFAMILY \
-        -p exportfile=$FILENAME_BASE.stats-s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
+        -p exportfile=$FILENAME_BASE.stats -s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
         tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $FILENAME_BASE.stats
   fi
 }
@@ -168,7 +168,7 @@ function func_load() {
 }
 
 function func_status() {
-  clush -g $CLUSH_NODE_GROUP -b tail -1 $TOOL_HOME/ycsb.out
+  clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -b tail -1 $TOOL_HOME/ycsb.out
   #clush -g $CLUSH_NODE_GROUP -b tail -1 $YCSB_HOME/ycsb.out
 }
 
@@ -180,7 +180,7 @@ function func_kill_one() {
 }
 
 function func_kill() {
-  clush -g $CLUSH_NODE_GROUP cd $TOOL_HOME \; ./ycsbrun.sh $TYPE killone
+  clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP cd $TOOL_HOME \; ./ycsbrun.sh $TYPE killone
 }
 
 
