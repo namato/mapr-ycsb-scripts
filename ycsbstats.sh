@@ -55,7 +55,7 @@ push(@typeordered, "INSERT" );
 
 
 opendir(D, $dir) || die "Can't open directory $dir";
-$grepstr = '$FNB' . '.out' . '.*'
+$grepstr = $FNB . '.out' . '.*';
 @files = grep (/^$grepstr/, readdir(D));
 foreach (@files) {
   $filename=$dir . "/" . $_;
@@ -154,7 +154,7 @@ foreach (@files) {
 
 
 opendir(D, $dir) || die "Can't open directory $dir";
-$grepstr = '$FNB' . '.stats' . '.*'
+$grepstr = $FNB . '.stats' . '.*';
 @files = grep (/^$grepstr/, readdir(D));
 foreach (@files) {
   $filename=$dir . "/" . $_;
