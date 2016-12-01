@@ -1,73 +1,41 @@
 # Overview
 
-This is a bunch of scripts to assist with running YCSB. There's also some guidance on setting up clustershell, which is a prerequistite.
+This is a fork of
+[vicenteg/mapr-ycsb-scripts](http://github.com/vicenteg/mapr-ycsb-scripts)
+that adds support for running YCSB against multiple databases.  At the
+present time, only Cassandra, MapR-DB and HBase are supported.
 
-# Clone this repo to `/tmp`
+The scripts are intended to be run from a 'driver' machine, which has connectivity
+and a 'clush' configuration for a cluster of database machines.  Each machine in that
+cluster will be loaded with a client instance of YCSB.
 
-```
-git clone https://github.com/vicenteg/mapr-ycsb-scripts.git /tmp/mapr-ycsb-scripts
-```
+Check the original repo above for instructions for installing clustershell, etc.
 
-# Get and unpack YCSB
+# Prerequisites
 
-YCSB 0.11.0 is the latest as of this writing. Use that one, or adjust the URL below as needed.
+- Clustershell (clush) is installed on the 'driver' machine
+- YCSB binaries exist on the 'driver' and all cluster machines
+- This repo exists on the 'driver' machine and all cluster machines
+- Your database of choice has been configured on the cluster machines
 
-If you don't want to unpack to `/tmp`, change that too. Pick a destination with enough space. 0.11.0 is about 350MB unpacked.
+# Quick Start
 
-```
-curl -L https://github.com/brianfrankcooper/YCSB/releases/download/0.11.0/ycsb-0.11.0.tar.gz | tar -C /tmp -vxzf -
-```
+## Ensure prerequisites are met
 
-# Set up clustershell
+Ensure that clustershell is installed, the 'all' group (or your preferred clush group) 
+is configured, and all above prerequisites have been meet.
 
-I am assuming that you can find and install python 2.7 and virtualenv for your OS. I use CentOS, and on CentOS, I can get virtualenv via yum with `yum -y install python-virtualenv`.
+## Set up ycsbrun.sh
 
-Create a new virtualenv for clustershell, activate the virtualenv, then install clustershell:
+Configuration of this script should happen by setting variables in
+`env.sh` in the root of this repository. Comments in that file should
+be self-explanatory.
 
-```
-virtualenv clustershell
-source clustershell/bin/activate
-pip install -r clustershell-requirements.txt
-```
+## Set up runall.sh
 
-Now to configure clustershell.
+Edit the variables at the top of that file to match your environment.
 
-Look at all the files in `dot_local`. Edit them as necessary. Primarily, you need to edit the following:
-
-`dot_local/etc/clustershell/clush.conf`: Set the remote username and your private keyfile location.
-`dot_local/etc/clustershell/groups.d/local.cfg`: Edit the line starting with `all` to be a space-delimited list of the hostnames in your cluster. There are examples of different ways to write the list, but the `all` group must exist.
-
-Then copy `dot_local` to `~/.local`. I used `-n` on cp to avoid clobbering existing files, just to be safe. You can remove that option if need be.
-
-```
-cp -nr dot_local ~/.local
-```
-
-If this all went according to plan, you should be able to run `clush -ab date` and get output similar to the following:
-
-```
-$ clush -ab date
----------------
-172.16.2.[4-9] (6)
----------------
-Sun Oct  9 12:21:01 EDT 2016
-```
-
-Clustershell is set up. Nice work.
-
-# Set up ycsbrun.sh
-
-Configuration of this script should happen by setting variables in `env.sh` in the root of this repository. Comments in that file should be self-explanatory.
-
-# Set up the cluster nodes
-
-Now that YCSB is unpacked, clustershell works, and these scripts are set up, you can push this stuff out to all the nodes.
-
-```
-clush -ac /tmp/ycsb-* /tmp/mapr-ycsb-scripts
-```
-
-# Create the table
+## Create the table
 
 Having set up env.sh you should have set a table name. Let's create it:
 
@@ -96,9 +64,17 @@ $ ./createtable.sh
 172.16.2.8: Hbase::Table - /tables/ycsb4
 ```
 
-This will use clustershell to pick a node at random from the cluster to create the table via the hbase shell. You need to pay attention to the output here, and make sure it completes successfully. Return code will be 0 even if it fails.
+This will use clustershell to pick a node at random from the cluster to
+create the table via the hbase shell. You need to pay attention to the
+output here, and make sure it completes successfully. Return code will
+be 0 even if it fails.
 
-# Load the table
+## Edit workload files
+
+Edit the files in $YCSB_ROOT/workloads, or wherever you are keeping workload files as 
+you defined in env.sh above, to match your desired test scenario(s).
+
+## Load the table
 
 Execute the load phase, using all nodes of the cluster to load data.
 
@@ -106,22 +82,26 @@ Execute the load phase, using all nodes of the cluster to load data.
 ./ycsbrun.sh maprdb load
 ```
 
-You should see reams of output. Do not panic. Or do. It's a free country. Look for things that look like errors. There may be things that look like errors that are not errors. Sorry, I didn't write the software.
+You should see reams of output. Do not panic. Or do. It's a free
+country. Look for things that look like errors. There may be things that
+look like errors that are not errors. Sorry, I didn't write the software.
 
-By default, this will load half a billion rows into the table, which can take a while. You will see periodic status updates like this:
+By default, this will load half a billion rows into the table, which
+can take a while. You will see periodic status updates like this:
 
 ```
 2016-10-09 13:09:52:216 610 sec: 886342 operations; 1326.6 current ops/sec; est completion in 15 hours 45 minutes [INSERT: Count=13266, Max=509439, Min=1274, Avg=3729.79, 90=4083, 99=15807, 99.9=250751, 99.99=360447]
 ```
 
-# Run your workload
+## Run your workload
 
-You can run your workload as follows:
+To run all the standard YCSB workloads A-F, use the 'runall' script as
+follows (this example is for Cassandra):
 
 ```
-./ycsbrun.sh maprdb tran
+./runall.sh -p cassandra.readconsistencylevel=THREE -p cassandra.writeconsistencylevel=THREE -p hosts='casshost' -p cassandra.keyspace='ycsb'
 ```
 
-"tran" is short for "transactions", I guess.
+This will run all workloads and create directories like 'cass33_workload_a_YYYYMMDD:HH:MM:SS'
+where the output files will be copied.
 
-At the end of the run, you will get a couple of files.
