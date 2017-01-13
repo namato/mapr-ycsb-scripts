@@ -37,12 +37,12 @@ function getdatanodes {
   #remove newlines
   DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
   FIRST_DATANODE="${DATANODES%% *}"
-  if [[ $FIRST_DATANODE =~ ip-[0-9]+-[0-9]+-[0-9]+-[0-9] ]]; then
-    # we are most likely running on EC2, try to get external hostnames
-    DATANODES=`clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -N curl -s http://169.254.169.254/latest/meta-data/public-ipv4`
-    DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
-    FIRST_DATANODE="${DATANODES%% *}"
-  fi
+  #if [[ $FIRST_DATANODE =~ ip-[0-9]+-[0-9]+-[0-9]+-[0-9] ]]; then
+    ## we are most likely running on EC2, try to get external hostnames
+  #  DATANODES=`clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -N curl -s http://169.254.169.254/latest/meta-data/public-ipv4`
+  #  DATANODES=`echo $DATANODES |tr  '[:space:]' ' ' `
+  #  FIRST_DATANODE="${DATANODES%% *}"
+  #fi
 }
 
 
@@ -98,13 +98,15 @@ function func_tran() {
   #run YCSB on all nodes using one
   getdatanodes
 
+  echo "DATANODES:" $DATANODES
+
   echo "Running YCSB test on these nodes: $DATANODES (using $TYPE with $TABLE)"
 
   for node in $DATANODES
   do
     set -x
     #hide the SLF4J error message
-    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE tranone -p hosts=localhost $* |grep -v SLF4J" &
+    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE tranone $* |grep -v SLF4J" &
     set +x
   done
 
@@ -129,13 +131,13 @@ function func_one() {
     # we only need to supply one host here, the client will discover the others
     (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode cassandra2-cql -threads \
         $threads -P $WORKLOAD \
-        -cp /YCSBRUN.FAKE -p exportfile=$FILENAME_BASE.stats -s $* 2>&1) | \
-        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $FILENAME_BASE.stats
+        -cp /YCSBRUN.FAKE -p exportfile=$YCSB_HOME/$FILENAME_BASE.stats -s $* 2>&1) | \
+        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $YCSB_HOME/$FILENAME_BASE.stats
   else
     (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode hbase10 -threads \
         $threads -P $WORKLOAD -p table=$TABLE -p columnfamily=$COLUMNFAMILY \
-        -p exportfile=$FILENAME_BASE.stats -s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
-        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $FILENAME_BASE.stats
+        -p exportfile=$YCSB_HOME/$FILENAME_BASE.stats -s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
+        tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $YCSB_HOME/$FILENAME_BASE.stats
   fi
 }
 
@@ -158,7 +160,9 @@ function func_load() {
   do
     set -x
     #hide the SLF4J error message
-    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE loadone -p hosts=localhost -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
+    echo sleeping 3 before starting $node
+    sleep 3
+    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE loadone -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
     set +x
     insertstart=$((insertstart + insertcount))
   done

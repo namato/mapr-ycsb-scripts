@@ -47,12 +47,35 @@ $maxsec = 0;
 my %summary;
 
 #construct all possible latency types array
-push(@typeordered, "UPDATE" );
-push(@typeordered, "READ-MODIFY-WRITE" );
-push(@typeordered, "READ" );
-push(@typeordered, "SCAN" );
-push(@typeordered, "INSERT" );
+push(@typeordered, "UPDATE_AVG" );
+push(@typeordered, "UPDATE_MAX" );
+push(@typeordered, "UPDATE_MIN" );
+push(@typeordered, "UPDATE_90" );
+push(@typeordered, "UPDATE_99" );
 
+push(@typeordered, "READ-MODIFY-WRITE_AVG" );
+push(@typeordered, "READ-MODIFY-WRITE_MAX" );
+push(@typeordered, "READ-MODIFY-WRITE_MIN" );
+push(@typeordered, "READ-MODIFY-WRITE_90" );
+push(@typeordered, "READ-MODIFY-WRITE_99" );
+
+push(@typeordered, "READ_AVG" );
+push(@typeordered, "READ_MAX" );
+push(@typeordered, "READ_MIN" );
+push(@typeordered, "READ_90" );
+push(@typeordered, "READ_99" );
+
+push(@typeordered, "SCAN_AVG" );
+push(@typeordered, "SCAN_MAX" );
+push(@typeordered, "SCAN_MIN" );
+push(@typeordered, "SCAN_90" );
+push(@typeordered, "SCAN_99" );
+
+push(@typeordered, "INSERT_AVG" );
+push(@typeordered, "INSERT_MAX" );
+push(@typeordered, "INSERT_MIN" );
+push(@typeordered, "INSERT_90" );
+push(@typeordered, "INSERT_99" );
 
 opendir(D, $dir) || die "Can't open directory $dir";
 $grepstr = $FNB . '.out' . '.*';
@@ -92,29 +115,32 @@ foreach (@files) {
 #   works with older YCSB (0.1.x)
 #      while ($string2 =~ /([A-Z\-]+)\sAverageLatency\(us\)=([0-9\.]+)\]/g) {
 #   works with newer YCSB (0.7.x and later)
-     while ($string2 =~ /([A-Z-:]+):\sCount=([0-9]+),\sMax=[0-9]+,\sMin=[0-9]+,\sAvg=([0-9\.]+),/g){
+      while ($string2 =~ /([A-Z-:]+):\sCount=([0-9]+),\sMax=([0-9]+),\sMin=([0-9]+),\sAvg=([0-9\.]+),\s90=([0-9]+),\s99=([0-9]+),/g) {
+	# collect all the descriptive stuff and a postfix
+	# for each column header
+	my @latencies = (
+	[ "_MAX", $3 ],
+	[ "_MIN", $4 ],
+	[ "_AVG", $5 ],
+	[ "_90", $6 ],
+	[ "_99", $7 ] );
         $latencyType=$1;
         $count=$2;
 #   intentionally ignore values where count is small as there appears to be a YCSB reporting bug in 0.9
-        $avglatency=$3;
-        #print $latencyType . " " . $count . " " . $avglatency . "\n";
+
+        print $latencyType . " " . $count . "\n";
         if ($count < 10) {
           print "ignoring suspiciously low internal count for " . $latencyType . ":" . $count . "\n";
         } else {
-#    this old way would discover the types in the YCSB output but I found it easier for later graphing
-#    to just always generate the same types in the output (using zero if not available)
-#        print $latencyType . " " . $avglatency . "\n";
-#        if ($typesfound) {
-#          if ($typeseen{$latencyType} eq "true") {
-#            die "Found a new output stat not seen earlier ('$latencyType') while processing '$filename'";
-#          }
-#        } else {
-#          $typesseen{$latencyType} = "true";
-#          push(@typeordered, $latencyType);
-#          print @typeordered;
-#        }
-          $prevlatency = $summary{$sec}{$latencyType};
-          $summary{$sec}{$latencyType} = (($ops * $avglatency) + ($prevops * $prevlatency))/($ops + $prevops);
+	  foreach $entref (@latencies) {
+	    @thisl = @$entref;
+	    $pf = $thisl[0];
+	    $l = $thisl[1];
+	    $curType = $latencyType . $pf;
+	    print "recording type $curType value $l\n";
+            $prevlatency = $summary{$sec}{$curType};
+            $summary{$sec}{$curType} = (($ops * $l) + ($prevops * $prevlatency))/($ops + $prevops);
+          }
         }
       }
   

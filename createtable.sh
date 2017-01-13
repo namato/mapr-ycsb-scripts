@@ -2,7 +2,7 @@
 
 source env.sh
 
-NN=`clush -g all -N hostname | wc -w`
+NN=`clush -l $SSH_REMOTE_USER -g all -N hostname | wc -w`
 
 TYPE=$1
 shift
@@ -16,7 +16,7 @@ create '$TABLE', 'family', SPLITS => splits
 EOM
      ;;
   cassandra2-cql)
-    SHELLCMD='cqlsh'
+    SHELLCMD='/mnt/apache-cassandra-3.9/bin/cqlsh casshost'
     read -r -d '' TABLEDEF << EOM
 create keyspace ycsb
 WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor': 3 };
@@ -32,7 +32,7 @@ field5 varchar,
 field6 varchar,
 field7 varchar,
 field8 varchar,
-field9 varchar);
+field9 varchar) with compression = {'sstable_compression': ''};
 EOM
      ;;
    *) 
@@ -41,4 +41,4 @@ EOM
      ;;
 esac
 
-echo "$TABLEDEF" | clush --pick=1 -g all $SHELLCMD
+echo "$TABLEDEF" | clush -l $SSH_REMOTE_USER --pick=1 -g all $SHELLCMD
