@@ -17,6 +17,10 @@
 # - Set $ENVSH and $ENVSH_REMOTE to the paths of env.sh on the local
 #   and remote hosts, respectively
 #
+# - Set $NMON to the path to the 'nmon' utility:  see http://nmon.sourceforge.net
+# 
+# - Set $NMON_DIR to the path where you want the nmon output logs.
+#
 # Any command line args (such as '-p xyz') are passed to
 # ycsbrun.sh for the 'tran' phase.
 #
@@ -26,20 +30,28 @@ source env.sh
 ENVSH=/home/ubuntu/mapr-ycsb-scripts/env.sh
 ENVSH_REMOTE=/home/centos/mapr-ycsb-scripts/env.sh
 WHICHDB=maprdb
+NMON=/home/centos/nmon/nmon_x86_64_rhel7
+NMON_DIR=/home/centos/nmon_logs
 
-for w in a b c d e f; do
+#for w in b c d e f; do
+#for w in a b c d e f; do
+for w in f; do
 	echo "killing off all jobs"
 	$TOOL_HOME/ycsbrun.sh $WHICHDB kill
 	echo "clearing caches"
 	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -o '-t -t' \
 	    "echo 3 | sudo tee /proc/sys/vm/drop_caches" > /dev/null 2>&1 
+	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP "pkill nmon"
 	echo "copying files for workload $w"
 	sed -i $ENVSH -e s/workload[abcdef]/workload$w/
 	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -c $ENVSH --dest=$ENVSH_REMOTE
 	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -c $YCSB_HOME/workloads/workload$w \
 		--dest=$YCSB_HOME/workloads/workload$w
-	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP rm -f $YCSB_HOME/$FILENAME_BASE.stats
+	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP \ 
+	    rm -f $YCSB_HOME/$FILENAME_BASE.stats
 	echo "running workload $w"
+	clush -l $SSH_REMOTE_USER -g $CLUSH_NODE_GROUP -o \ 
+	    '-t -t' 'cd $NMON_DIR && sudo $NMON -f -s 60'
 	$TOOL_HOME/ycsbrun.sh $WHICHDB tran $*
 	RESULTDIR_FORMAT=`date '+%Y%m%d_%T'`
 	DIRSTR=$WHICHDB

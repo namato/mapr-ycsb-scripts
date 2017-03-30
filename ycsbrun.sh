@@ -126,6 +126,17 @@ function func_one() {
   else
 	threads=$TRAN_THREADS
   fi
+
+  CPCMD='hbase classpath'
+  if [ "$USE_DOCKER" = true  ]; then
+	  CPCMD='mapr classpath'
+	  mode+='one'
+	  if [ "$TYPE" != "maprdb" ]; then
+	  	echo "*** ERROR:  docker mode supported only for maprdb type"
+	  	exit
+	  fi
+  fi
+
   #leverages newer ycsb scripts (0.7.x and later)
   if [ "$TYPE" = "cassandra2-cql" ]; then
     # we only need to supply one host here, the client will discover the others
@@ -133,13 +144,21 @@ function func_one() {
         $threads -P $WORKLOAD \
         -cp /YCSBRUN.FAKE -p exportfile=$YCSB_HOME/$FILENAME_BASE.stats -s $* 2>&1) | \
         tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $YCSB_HOME/$FILENAME_BASE.stats
+  elif [ "$USE_DOCKER" = true ]; then
+	   sudo docker run -w $TOOL_HOME -t -i -a STDOUT -a STDIN -a STDERR \
+	  	  -v $MAPR_CONTAINER_BASEDIR:$MAPR_CONTAINER_BASEDIR -e MAPR_CLUSTER=$CLUSTER_NAME \
+		  -e MAPR_CLDB_HOSTS=$CLDB_HOSTS -e MAPR_CONTAINER_USER=$MAPR_CONTAINER_USER \
+		  -e MAPR_CONTAINER_GROUP=$MAPR_CONTAINER_GROUP -e MAPR_CONTAINER_UID=$MAPR_CONTAINER_UID \
+		  -e MAPR_CONTAINER_GID=$MAPR_CONTAINER_GID $MAPR_CONTAINER_IMAGE \
+		  start $TOOL_HOME/drun.sh $TOOL_HOME $TYPE $mode $*
   else
     (cd $YCSB_HOME && $YCSB_HOME/bin/ycsb $mode hbase10 -threads \
         $threads -P $WORKLOAD -p table=$TABLE -p columnfamily=$COLUMNFAMILY \
-        -p exportfile=$YCSB_HOME/$FILENAME_BASE.stats -s $* -cp /YCSBRUN.FAKE:`hbase classpath` 2>&1) | \
+        -p exportfile=$YCSB_HOME/$FILENAME_BASE.stats -s $* -cp /YCSBRUN.FAKE:`/opt/mapr/bin/mapr classpath` 2>&1) | \
         tee $FILENAME_BASE.out; egrep -v "\[[A-Z\-]+\], >?[0-9]+, [0-9]+" $YCSB_HOME/$FILENAME_BASE.stats
   fi
 }
+
 
 function func_load() {
   #run YCSB load on all nodes using one
@@ -156,13 +175,21 @@ function func_load() {
 
   echo "Loading a total of $recordcount records onto $numnodes nodes ($insertcount from each)"
 
+  RUNCMD=loadone
+  TTYFLAG=
+  if [ "$USE_DOCKER" = true ]; then
+	  echo "Using docker container..."
+	  RUNCMD=dockerloadone
+	  TTYFLAG='-t -t'
+  fi
+
   for node in $DATANODES
   do
     set -x
     #hide the SLF4J error message
     echo sleeping 3 before starting $node
     sleep 3
-    ssh $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE loadone -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
+    ssh $TTYFLAG $SSH_REMOTE_USER@$node "cd $TOOL_HOME; WORKLOAD=$WORKLOAD $TOOL_HOME/ycsbrun.sh $TYPE $RUNCMD -p insertstart=$insertstart -p insertcount=$insertcount $* |grep -v SLF4J" &
     set +x
     insertstart=$((insertstart + insertcount))
   done
@@ -194,10 +221,12 @@ function func_usage() {
   echo "	<action> is one of one, all, load, copy, status, kill"
   echo "		load - run a ycsb load on all nodes (load data - run first)"
   echo "		tran - run a ycsb test on all nodes"
+  echo "                dockerload - same as load, but use the MapR PACC docker container"
+  echo "                dockertran - same as tran, but use the MapR PACC docker container"
   echo "		loadone/tranone - run a single ycsb test from this node"
   echo "		status - report status of running ycsb tests"
   echo "		kill - kill running ycsb tests"
-  echo "		copy - copy test results from a run to current directory "
+  echo "		copy - copy test results from a run to current directory"
   echo "Note that all, one, and load pass any additional arguments to the underlying YCSB tools"
 
   exit 1
@@ -206,6 +235,7 @@ function func_usage() {
 ##################
 ##MAIN
 ##################
+  USEDOCKER=false
   TYPE=$1
   action=$2
   shift
@@ -224,15 +254,27 @@ function func_usage() {
   esac
 
   case "$action" in
+    dockertranone) 
+       USE_DOCKER=true
+       ;&
     tranone) 
        func_one run $*
        ;;
-    loadone) 
+    dockerloadone)
+       USE_DOCKER=true
+       ;&
+    loadone)
        func_one load $*
        ;;
-    tran) 
+    dockertran)
+       USE_DOCKER=true
+       ;&
+    tran)
        func_tran $*
        ;;
+    dockerload)
+       USE_DOCKER=true
+       ;&
     load) 
        func_load $*
        ;;
